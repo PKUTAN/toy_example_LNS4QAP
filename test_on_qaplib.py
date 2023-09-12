@@ -152,8 +152,12 @@ if __name__ == '__main__':
     train_set = QAPLIB('train','nug')
     
     from gurobipy import Model,GRB,quicksum
+    import os
     F,D,per,sol,name = train_set.get_pair(2)
     N = F.shape[0]
+    log_path = './log/' + name 
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
 
     print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
     print("####################################################")
@@ -163,5 +167,7 @@ if __name__ == '__main__':
 
     m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
     m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
+
+    m.Params.LogFile = log_path +'/{}'.format(name)+'.log'
 
     m.optimize()
