@@ -1,0 +1,60 @@
+
+Gurobi 10.0.1 (linux64) logging started Tue Sep 12 17:53:24 2023
+
+Set parameter LogFile to value "./log/esc16i/esc16i.log"
+Set parameter TimeLimit to value 180
+Gurobi Optimizer version 10.0.1 build v10.0.1rc0 (linux64)
+
+CPU model: 12th Gen Intel(R) Core(TM) i5-12600KF, instruction set [SSE2|AVX|AVX2]
+Thread count: 8 physical cores, 16 logical processors, using up to 16 threads
+
+Optimize a model with 32 rows, 256 columns and 512 nonzeros
+Model fingerprint: 0x9c90628d
+Model has 2640 quadratic objective terms
+Variable types: 0 continuous, 256 integer (256 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  QObjective range [4e+00, 4e+01]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Found heuristic solution: objective 68.0000000
+Presolve time: 0.02s
+Presolved: 128 rows, 352 columns, 3344 nonzeros
+Variable types: 0 continuous, 352 integer (256 binary)
+
+Root relaxation: objective 0.000000e+00, 61 iterations, 0.00 seconds (0.00 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0   16   68.00000    0.00000   100%     -    0s
+H    0     0                      28.0000000    0.00000   100%     -    0s
+H    0     0                      16.0000000    0.00000   100%     -    0s
+     0     0    0.00000    0   30   16.00000    0.00000   100%     -    0s
+H    0     0                      14.0000000    0.00000   100%     -    0s
+     0     0    0.00000    0   14   14.00000    0.00000   100%     -    0s
+     0     0    0.00000    0   18   14.00000    0.00000   100%     -    0s
+     0     0    0.00000    0   18   14.00000    0.00000   100%     -    0s
+     0     0    0.00000    0   13   14.00000    0.00000   100%     -    0s
+     0     0    0.00000    0   13   14.00000    0.00000   100%     -    0s
+     0     0    0.00000    0   13   14.00000    0.00000   100%     -    0s
+     0     2    0.00000    0   13   14.00000    0.00000   100%     -    0s
+
+Cutting planes:
+  Gomory: 4
+  Cover: 2
+  Implied bound: 6
+  Clique: 1
+  MIR: 16
+  StrongCG: 1
+  GUB cover: 1
+  RLT: 1
+
+Explored 1262 nodes (9023 simplex iterations) in 0.20 seconds (0.26 work units)
+Thread count was 16 (of 16 available processors)
+
+Solution count 4: 14 16 28 68 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 1.400000000000e+01, best bound 1.400000000000e+01, gap 0.0000%

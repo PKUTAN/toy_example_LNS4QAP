@@ -1,16 +1,10 @@
-import torch
-import torch.nn.functional as F
-from torch.utils.data import Dataset
-from torchvision import transforms
-import torch_geometric as pyg
+import gurobipy as gp
 import numpy as np
-from pathlib import Path
-import random
 import re
-import pygmtools as pygm
+from pathlib import Path
 
 cls_list = ['bur', 'chr', 'els', 'esc', 'had', 'kra', 'lipa', 'nug', 'rou', 'scr', 'sko', 'ste', 'tai', 'tho', 'wil']
-cls_list_now = ['tai']
+
 class BaseDataset:
     def __init__(self):
         pass
@@ -100,8 +94,6 @@ class QAPLIB(BaseDataset):
         dat_path = self.qap_path / (name + '.dat')
         sln_path = self.qap_path / (name + '.sln')
         dat_file = dat_path.open()
-        # if not os.path.exists(sln_path):
-        #     return None,None,None,None,None
         sln_file = sln_path.open()
 
         def split_line(x):
@@ -151,32 +143,25 @@ class QAPLIB(BaseDataset):
             perm_mat[r, c - 1] = 1
 
         return Fi, Fj, perm_mat, sol, name
-    
+
 if __name__ == '__main__':
     from gurobipy import Model,GRB,quicksum
-    import os
-    for name in cls_list_now:
-        train_set = QAPLIB('train',name)
 
-        for i in range(2,len(train_set)):
-            F,D,per,sol,name = train_set.get_pair(i)
-            # if F.sum()==None:
-            #     continue
-            N = F.shape[0]
-            log_path = './log/' + name + '.log'
-            # if not os.path.exists(log_path):
-            #     os.makedirs(log_path)
+    train_set = QAPLIB('train','els')
+    F,D,per,sol,name = train_set.get_pair(0)
+                # if F.sum()==None:
+                #     continue
+    N = F.shape[0]
+    
+    m = Model('matrix1')
+    x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
+    m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
 
-            print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
-            print("####################################################")
-            m = Model('matrix1')
-            x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
-            m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
+    m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
+    m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
 
-            m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
-            m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
+    m.Params.TimeLimit = 180
 
-            m.Params.LogFile = log_path
-            m.Params.TimeLimit = 180
+    import pdb; pdb.set_trace()
 
-            m.optimize()
+    m.optimize()

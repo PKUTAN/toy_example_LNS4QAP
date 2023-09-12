@@ -1,0 +1,21 @@
+
+Gurobi 10.0.1 (linux64) logging started Tue Sep 12 19:13:44 2023
+
+Set parameter LogFile to value "./log/lipa60b.log"
+Set parameter TimeLimit to value 180
+Gurobi Optimizer version 10.0.1 build v10.0.1rc0 (linux64)
+
+CPU model: 12th Gen Intel(R) Core(TM) i5-12600KF, instruction set [SSE2|AVX|AVX2]
+Thread count: 8 physical cores, 16 logical processors, using up to 16 threads
+
+Optimize a model with 120 rows, 3600 columns and 7200 nonzeros
+Model fingerprint: 0xd6646ac8
+Model has 6184380 quadratic objective terms
+Variable types: 0 continuous, 3600 integer (3600 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  QObjective range [2e+00, 1e+04]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Found heuristic solution: objective 3317236.0000
