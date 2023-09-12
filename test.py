@@ -2,6 +2,8 @@ import gurobipy as gp
 import numpy as np
 import re
 from pathlib import Path
+import time
+import random
 
 cls_list = ['bur', 'chr', 'els', 'esc', 'had', 'kra', 'lipa', 'nug', 'rou', 'scr', 'sko', 'ste', 'tai', 'tho', 'wil']
 
@@ -144,24 +146,76 @@ class QAPLIB(BaseDataset):
 
         return Fi, Fj, perm_mat, sol, name
 
+
+def LNS_QAP(model ,prob_size ,local_size ,steps ,limited_times = 3 ,verbose = False):
+    prob_index = [i for i in range(prob_size)]
+    model.Params.TimeLimit = limited_times
+    total_time = 0 
+    
+    start_time = time.time()
+    model.optimize()
+    sol = solution(model)
+    
+    for _ in range(steps):
+        index = random.sample(prob_index,local_size)
+        sol ,obj= LNS(model.copy() ,sol,index)
+        if verbose == True:
+            print(obj)
+
+    return sol
+
+
+def LNS(model,sol,index):
+    
+    for var in sol:
+        node, position = var
+        if node in index:
+            model.addConstr(x[node,position] == 1)
+    import pdb; pdb.set_trace()        
+    model.optimize()
+    sol_new = solution(model)
+    return sol_new , model.ObjVal
+
+def solution(model):
+    sol = []
+    for v in model.getVars():
+        if v.x == 1:
+            sol.append(eval(v.VarName[1:]))
+    return sol
+
 if __name__ == '__main__':
     from gurobipy import Model,GRB,quicksum
 
-    train_set = QAPLIB('train','els')
-    F,D,per,sol,name = train_set.get_pair(0)
+    train_set = QAPLIB('train','tai')
+    F,D,per,sol,name = train_set.get_pair(2)
                 # if F.sum()==None:
                 #     continue
     N = F.shape[0]
     
-    m = Model('matrix1')
+    m = Model('QAP')
     x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
     m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
-
+    
     m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
     m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
+    # m.addConstr(x[0,7] == 1);
+    # m.addConstr(x[1,0] == 1);
+    # m.addConstr(x[2,5] == 1);
+    # m.addConstr(x[3,1] == 1);
+    # m.addConstr(x[4,10] == 1);
+    # m.addConstr(x[5,9] == 1);
+    # m.addConstr(x[6,2] == 1);
+    # m.addConstr(x[7,4] == 1);
+    # m.addConstr(x[8,8] == 1);
+    # m.addConstr(x[9,6] == 1);
+    # m.addConstr(x[10,11] == 1);
+    # m.addConstr(x[11,3] == 1);
 
-    m.Params.TimeLimit = 180
 
-    import pdb; pdb.set_trace()
+    # m.Params.OutputFlag = 0
+    sol = LNS_QAP(m,N,2,10,verbose=True)
 
-    m.optimize()
+    # m.optimize()
+
+    # sol = solution(m)
+    # print(sol)
