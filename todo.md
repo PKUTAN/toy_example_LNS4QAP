@@ -13,7 +13,7 @@
 
 ### 一些实验的效果：
 
-1. 对于tai64这类大的qap，LNS w/o learning 可以将gap缩小至 5%，这比直接用Gurobi（无法求解），或者RGM（ICLR2022）都要效果好很多。
+1. 对于tai64这类大的qap，random LNS w/o learning 可以将gap缩小至 5%，这比直接用Gurobi（无法求解），或者RGM（ICLR2022）都要效果好很多。
 
 ### 一些问题：
 
