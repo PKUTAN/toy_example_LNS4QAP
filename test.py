@@ -161,17 +161,17 @@ def LNS_QAP(model ,prob_size ,local_size ,steps ,limited_times = 3 ,verbose = Fa
         sol ,obj= LNS(model.copy() ,sol,index)
         if verbose == True:
             print(obj)
-
-    return sol
+    end_time = time.time()
+    return sol , (end_time-start_time), obj
 
 
 def LNS(model,sol,index):
     
     for var in sol:
         node, position = var
-        if node in index:
+        if node not in index:
             model.addConstr(x[node,position] == 1)
-    import pdb; pdb.set_trace()        
+    # import pdb; pdb.set_trace()        
     model.optimize()
     sol_new = solution(model)
     return sol_new , model.ObjVal
@@ -186,36 +186,50 @@ def solution(model):
 if __name__ == '__main__':
     from gurobipy import Model,GRB,quicksum
 
-    train_set = QAPLIB('train','tai')
-    F,D,per,sol,name = train_set.get_pair(2)
+    train_set = QAPLIB('train','tho')
+    F,D,per,sol,name = train_set.get_pair(0)
                 # if F.sum()==None:
                 #     continue
     N = F.shape[0]
     
     m = Model('QAP')
     x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
-    m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
+    m.setObjective(quicksum(quicksum(F*(x.T@D@x))),GRB.MINIMIZE)
     
     m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
     m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
     # m.addConstr(x[0,7] == 1);
-    # m.addConstr(x[1,0] == 1);
-    # m.addConstr(x[2,5] == 1);
-    # m.addConstr(x[3,1] == 1);
-    # m.addConstr(x[4,10] == 1);
-    # m.addConstr(x[5,9] == 1);
-    # m.addConstr(x[6,2] == 1);
-    # m.addConstr(x[7,4] == 1);
-    # m.addConstr(x[8,8] == 1);
-    # m.addConstr(x[9,6] == 1);
-    # m.addConstr(x[10,11] == 1);
-    # m.addConstr(x[11,3] == 1);
+    # m.addConstr(x[1,5] == 1);
+    # m.addConstr(x[2,19] == 1);
+    # m.addConstr(x[3,16] == 1);
+    # m.addConstr(x[4,18] == 1);
+    # m.addConstr(x[5,11] == 1);
+    # m.addConstr(x[6,28] == 1);
+    # m.addConstr(x[7,14] == 1);
+    # m.addConstr(x[8,0] == 1);
+    # m.addConstr(x[9,1] == 1);
+    # m.addConstr(x[10,29] == 1);
+    # m.addConstr(x[11,10] == 1);
+    # m.addConstr(x[12,12] == 1);
+    # m.addConstr(x[13,27] == 1);
+    # m.addConstr(x[14,22] == 1);
+    # m.addConstr(x[15,26] == 1);
+    # m.addConstr(x[16,15] == 1);
+    # m.addConstr(x[17,21] == 1);
+    # m.addConstr(x[18,9] == 1);
+    # m.addConstr(x[19,20] == 1);
+    # m.addConstr(x[20,24] == 1);
+    # m.addConstr(x[21,23] == 1);
+    # m.addConstr(x[22,25] == 1);
+    # m.addConstr(x[23,17] == 1);
+    # m.addConstr(x[24,2] == 1);
+    # m.addConstr(x[25,13] == 1);
+    # m.addConstr(x[26,6] == 1);
+    # m.addConstr(x[27,4] == 1);
+    # m.addConstr(x[28,8] == 1);
+    # m.addConstr(x[29,3] == 1);
 
 
-    # m.Params.OutputFlag = 0
-    sol = LNS_QAP(m,N,2,10,verbose=True)
-
-    # m.optimize()
-
-    # sol = solution(m)
-    # print(sol)
+    m.Params.OutputFlag = 0
+    sol, time_duration , obj= LNS_QAP(m,N,20,10,limited_times=5,verbose=True)
+    print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
