@@ -100,8 +100,6 @@ class QAPLIB(BaseDataset):
         dat_path = self.qap_path / (name + '.dat')
         sln_path = self.qap_path / (name + '.sln')
         dat_file = dat_path.open()
-        # if not os.path.exists(sln_path):
-        #     return None,None,None,None,None
         sln_file = sln_path.open()
 
         def split_line(x):
@@ -142,6 +140,7 @@ class QAPLIB(BaseDataset):
 
         # read solution
         sol = sln_list[0][1]
+        obj = sln_list[0][-1]
         perm_list = []
         for _ in sln_list[1:]:
             perm_list += _
@@ -149,7 +148,10 @@ class QAPLIB(BaseDataset):
         perm_mat = np.zeros((prob_size, prob_size), dtype=np.float32)
         for r, c in enumerate(perm_list):
             perm_mat[r, c - 1] = 1
-
+        sol_obj = (Fi*((perm_mat@Fj)@perm_mat.T)).sum()
+        if sol_obj != obj:
+            perm_mat = perm_mat.T
+            
         return Fi, Fj, perm_mat, sol, name
     
 if __name__ == '__main__':

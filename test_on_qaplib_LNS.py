@@ -149,7 +149,7 @@ class QAPLIB(BaseDataset):
         for r, c in enumerate(perm_list):
             perm_mat[r, c - 1] = 1
 
-        return Fi, Fj, perm_mat, sol, name
+        return Fi, Fj, perm_mat, sol, name,obj
     
 def LNS_QAP(model ,prob_size ,local_size ,steps  ,limited_times = 3 ,verbose = False):
     prob_index = [i for i in range(prob_size)]
@@ -158,7 +158,7 @@ def LNS_QAP(model ,prob_size ,local_size ,steps  ,limited_times = 3 ,verbose = F
     start_time = time.time()
     model.optimize()
     sol = solution(model)
-    
+    model.Params.OutputFlag = 0
     for _ in range(steps):
         index = random.sample(prob_index,local_size)
         sol ,obj= LNS(model.copy() ,sol,index)
@@ -191,7 +191,7 @@ if __name__ == '__main__':
     
     from gurobipy import Model,GRB,quicksum
     import os
-    F,D,per,sol,name = train_set.get_pair(0)
+    F,D,per,sol,name, opt_obj = train_set.get_pair(0)
 
     N = F.shape[0]
     log_path = './log/LNS_QAP/' + name + '.log'
@@ -204,8 +204,7 @@ if __name__ == '__main__':
 
     m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
     m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
-
-    m.Params.OutputFlag = 0
     
     sol, time_duration , obj= LNS_QAP(m,N,5,100,limited_times=5,verbose=True)
     print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
+    print('gap is :{}'.format((obj-opt_obj)/opt_obj))

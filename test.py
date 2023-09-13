@@ -136,6 +136,7 @@ class QAPLIB(BaseDataset):
 
         # read solution
         sol = sln_list[0][1]
+        obj = sln_list[0][-1]
         perm_list = []
         for _ in sln_list[1:]:
             perm_list += _
@@ -143,19 +144,22 @@ class QAPLIB(BaseDataset):
         perm_mat = np.zeros((prob_size, prob_size), dtype=np.float32)
         for r, c in enumerate(perm_list):
             perm_mat[r, c - 1] = 1
+        sol_obj = (Fi*((perm_mat@Fj)@perm_mat.T)).sum()
+        if sol_obj != obj:
+            perm_mat = perm_mat.T
 
-        return Fi, Fj, perm_mat, sol, name
+        return Fi, Fj, perm_mat, sol, name,obj
 
 
 def LNS_QAP(model ,prob_size ,local_size ,steps ,limited_times = 3 ,verbose = False):
     prob_index = [i for i in range(prob_size)]
     model.Params.TimeLimit = limited_times
-    total_time = 0 
     
     start_time = time.time()
     model.optimize()
     sol = solution(model)
-    
+
+    model.Params.OutputFlag = 0
     for _ in range(steps):
         index = random.sample(prob_index,local_size)
         sol ,obj= LNS(model.copy() ,sol,index)
@@ -186,39 +190,41 @@ def solution(model):
 if __name__ == '__main__':
     from gurobipy import Model,GRB,quicksum
 
-    train_set = QAPLIB('train','tho')
-    F,D,per,sol,name = train_set.get_pair(0)
+    train_set = QAPLIB('train','tai')
+    F,D,per,sol,name ,opt_obj = train_set.get_pair(-6)
                 # if F.sum()==None:
                 #     continue
     N = F.shape[0]
-    
+    A = [(i,j) for i in range(N) for j in range(N) if i != j]
     m = Model('QAP')
     x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
-    m.setObjective(quicksum(quicksum(F*(x.T@D@x))),GRB.MINIMIZE)
+    m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
+    # m.setObjective(quicksum(F[i,j]*D[k,l] for i,j in A),GRB.MINIMIZE)
     
     m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
     m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
-    # m.addConstr(x[0,7] == 1);
-    # m.addConstr(x[1,5] == 1);
-    # m.addConstr(x[2,19] == 1);
-    # m.addConstr(x[3,16] == 1);
-    # m.addConstr(x[4,18] == 1);
-    # m.addConstr(x[5,11] == 1);
-    # m.addConstr(x[6,28] == 1);
-    # m.addConstr(x[7,14] == 1);
-    # m.addConstr(x[8,0] == 1);
-    # m.addConstr(x[9,1] == 1);
-    # m.addConstr(x[10,29] == 1);
-    # m.addConstr(x[11,10] == 1);
+
+    # m.addConstr(x[0,0] == 1);
+    # m.addConstr(x[1,1] == 1);
+    # m.addConstr(x[2,2] == 1);
+    # m.addConstr(x[3,3] == 1);
+    # m.addConstr(x[4,4] == 1);
+    # m.addConstr(x[5,5] == 1);
+    # m.addConstr(x[6,6] == 1);
+    # m.addConstr(x[7,7] == 1);
+    # m.addConstr(x[8,8] == 1);
+    # m.addConstr(x[9,9] == 1);
+    # m.addConstr(x[10,10] == 1);
+    # m.addConstr(x[11,11] == 1);
     # m.addConstr(x[12,12] == 1);
-    # m.addConstr(x[13,27] == 1);
-    # m.addConstr(x[14,22] == 1);
-    # m.addConstr(x[15,26] == 1);
-    # m.addConstr(x[16,15] == 1);
-    # m.addConstr(x[17,21] == 1);
-    # m.addConstr(x[18,9] == 1);
-    # m.addConstr(x[19,20] == 1);
-    # m.addConstr(x[20,24] == 1);
+    # m.addConstr(x[13,13] == 1);
+    # m.addConstr(x[14,14] == 1);
+    # m.addConstr(x[15,15] == 1);
+    # m.addConstr(x[16,16] == 1);
+    # m.addConstr(x[17,17] == 1);
+    # m.addConstr(x[18,18] == 1);
+    # m.addConstr(x[19,19] == 1);
+    # m.addConstr(x[20,20] == 1);
     # m.addConstr(x[21,23] == 1);
     # m.addConstr(x[22,25] == 1);
     # m.addConstr(x[23,17] == 1);
@@ -228,8 +234,9 @@ if __name__ == '__main__':
     # m.addConstr(x[27,4] == 1);
     # m.addConstr(x[28,8] == 1);
     # m.addConstr(x[29,3] == 1);
-
-
-    m.Params.OutputFlag = 0
-    sol, time_duration , obj= LNS_QAP(m,N,20,10,limited_times=5,verbose=True)
+    
+    # m.Params.TimeLimit = 320
+    # m.optimize()
+    sol, time_duration , obj= LNS_QAP(m,N,8,100,limited_times=10,verbose=True)
     print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
+    print('gap:{}'.format((obj-opt_obj)/opt_obj))
