@@ -1,6 +1,7 @@
 ### 需要完成的任务
 
 * [ ] 如何将gurobi用在更大的qap problem上：variable在80个以上的都不好求解，e.g. tai80，tai100
+* [ ] 在进行local search的时候，对于sub problem的repair上，如何让objective function仅仅计算repair_size的计算量
 * [ ] 如何将强化学习引入到local search当中
 
 ### 一些 insight
