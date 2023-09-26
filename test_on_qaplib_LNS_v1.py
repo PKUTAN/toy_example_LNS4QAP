@@ -9,6 +9,7 @@ import random
 import re
 import pygmtools as pygm
 import time
+import copy
 
 cls_list = ['bur', 'chr', 'els', 'esc', 'had', 'kra', 'lipa', 'nug', 'rou', 'scr', 'sko', 'ste', 'tai', 'tho', 'wil']
 
@@ -152,48 +153,94 @@ class QAPLIB(BaseDataset):
 
         return Fi, Fj, perm_mat, sol, name,obj
     
-def LNS_QAP(model ,prob_size ,local_size ,steps  ,limited_times = 3 ,verbose = False):
+def LNS_QAP(model,D,F ,prob_size ,local_size ,steps  ,limited_times = 3 ,verbose = False):
     prob_index = [i for i in range(prob_size)]
-    model.Params.TimeLimit = limited_times
-
-    # model.Params.Presolve = 0
-
-    start_time = time.time()
-    model.optimize(mycallback)
-    
-    gurobi_interm_obj.append(model.ObjVal)
-    gurobi_interm_time.append(time.time()-start_time)
-    sol = solution(model)
+    model.Params.TimeLimit = limited_times    
     model.Params.OutputFlag = 0
-    obj = 0
+    start_time = time.time()
+
+    sol = [[i,i] for i in range(prob_size)]
+    best_obj = obj = float('inf')
+    best_sol = None
     for _ in range(steps):
-        index = random.sample(prob_index,local_size)
-        sol ,new_obj= LNS(model.copy() ,sol,index, start_time)
+        index = sorted(random.sample(prob_index,local_size))
+        out_index = np.setdiff1d(np.array(prob_index),np.array(index)).tolist()
+        sol ,new_obj= LNS(model.copy(),D,F,sol,index, out_index, start_time)
         if verbose == True:
             print(new_obj)
-        if obj <= new_obj:
-            local_size = max(N//4,local_size - 1)
-        # if obj > new_obj:
-        #     local_size = min(N-5,local_size + 1)
+        if (obj - new_obj) == 0.:
+            local_size = min(20,local_size+1)
+
         obj = new_obj
+        if best_obj > obj:
+            best_obj = obj
+            best_sol = sol
     end_time = time.time()
-    return sol , (end_time-start_time), obj
+
+    return  best_sol, (end_time-start_time), best_obj
 
 
-def LNS(model,sol,index, start_time):
-    for var in sol:
-        node, position = var
-        if node not in index:
-            model.addConstr(x[node,position] == 1)
-    # import pdb; pdb.set_trace()        
+def LNS(model,D,F,sol,index, out_index, start_time):
+    # import pdb; pdb.set_trace()
+    N = len(index)
+    per_sol = form_per(sol)
+    per_assigned = per_sol[out_index]
+    sub_loc = sorted([j for i,j in sol if i in index])
+
+    x = model.addMVar(shape=(N,N),vtype= GRB.BINARY,name='x')
+    
+    sub_D = D[sub_loc][:,sub_loc]
+    sub_F = F[index][:,index]
+    sub_left_D = D[sub_loc] @ per_assigned.T
+    sub_right_D = per_assigned @ D[:,sub_loc]
+    sub_left_F = F[index][:,out_index]
+    sub_right_F = F[out_index][:,index]
+
+    objective = (sub_F*(x@sub_D@x.T)).sum() # 二次项
+    objective += (sub_left_F*(x@sub_left_D)).sum() 
+    objective += (sub_right_F*(sub_right_D@x.T)).sum()#一次项
+    model.setObjective(objective,GRB.MINIMIZE)
+
+    model.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
+    model.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N)); 
+
     model.optimize()
-
-    gurobi_interm_obj.append(model.ObjVal)
+    
+    sub_sol = solution(model)
+    sol_new = sub2whole(sub_sol,sol,index)
+    obj = cal_obj(sol_new,D,F)
+    # import pdb; pdb.set_trace()
+    
+    gurobi_interm_obj.append(obj)
     gurobi_interm_time.append(time.time()-start_time)
 
-    sol_new = solution(model)
-    return sol_new , model.ObjVal
+    return sol_new, obj
 
+def form_per(sol):
+    N = len(sol)
+    per = np.zeros((N,N))
+    
+    for i,j in sol:
+        per[i,j] = 1
+
+    return per
+
+def cal_obj(sol,D,F):
+    per = form_per(sol)
+    obj = np.sum(F*(per@D@per.T))  
+    return obj
+
+def sub2whole(sub_sol,sol,index):
+    sol_out = sol[:]
+    sub_prob_size = len(sub_sol)
+    unassigned_loc = sorted([loc for idx, loc in sol_out if idx in index])
+    unassigned_flow = index
+
+    for i in range(sub_prob_size):
+        sol_out[unassigned_flow[i]][1] = unassigned_loc[sub_sol[i][1]]
+    
+    return sol_out
+             
 def solution(model):
     sol = []
     for v in model.getVars():
@@ -225,20 +272,13 @@ if __name__ == '__main__':
     print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
     print("####################################################")
     m = Model('QAP')
-    x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
-    m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
 
-
-    m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
-    m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
-
-
-    sol, time_duration , obj= LNS_QAP(m,N,25,25,limited_times=20,verbose=True)
+    sol, time_duration , obj= LNS_QAP(m,D,F,N,13,1000,limited_times=20,verbose=True)
     print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
     print('gap is :{}'.format((obj-opt_obj)/opt_obj))
 
     save_obj_path = './result_gurobi/' + name +'LNS_obj.npy'
     save_time_path = './result_gurobi/' + name +'LNS_time.npy'
 
-    np.save(save_obj_path,gurobi_interm_obj)
-    np.save(save_time_path,gurobi_interm_time)
+    # np.save(save_obj_path,gurobi_interm_obj)
+    # np.save(save_time_path,gurobi_interm_time)

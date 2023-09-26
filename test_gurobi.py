@@ -33,7 +33,7 @@ class QAPLIB(BaseDataset):
                 name = dat_path.name[:-4]
                 prob_size = int(re.findall(r"\d+", name)[0])
                 if (self.sets == 'test' and prob_size > 90) \
-                    or (self.sets == 'train' and prob_size > 90):
+                    or (self.sets == 'train' and prob_size > 160):
                     continue
                 self.data_list.append(name)
 
@@ -155,16 +155,26 @@ def LNS_QAP(model ,prob_size ,local_size ,steps ,limited_times = 3 ,verbose = Fa
     prob_index = [i for i in range(prob_size)]
     model.Params.TimeLimit = limited_times
     
-    start_time = time.time()
+    
     model.optimize()
     sol = solution(model)
 
+    count = 0
+    obj = 0
     model.Params.OutputFlag = 0
+    start_time = time.time()
     for _ in range(steps):
         index = random.sample(prob_index,local_size)
-        sol ,obj= LNS(model.copy() ,sol,index)
+        sol ,new_obj= LNS(model.copy() ,sol,index)
         if verbose == True:
-            print(obj)
+            print(new_obj)
+        if new_obj == obj:
+            count += 1
+        else:
+            count = 0
+        if count == 5:
+            break
+        obj = new_obj
     end_time = time.time()
     return sol , (end_time-start_time), obj
 
@@ -187,22 +197,159 @@ def solution(model):
             sol.append(eval(v.VarName[1:]))
     return sol
 
-if __name__ == '__main__':
-    from gurobipy import Model,GRB,quicksum
+def mycallback(model, where):
+    # 如果是在找到一个新的解决方案时
+    if where == GRB.Callback.MIPSOL:
+        # 获取当前解的目标值
+        objval = model.cbGet(GRB.Callback.MIPSOL_OBJ)
+        runtime = model.cbGet(GRB.Callback.RUNTIME)
+        gurobi_interm_obj.append(objval)
+        gurobi_interm_time.append(runtime)
 
+if __name__ == '__main__':
     train_set = QAPLIB('train','tai')
-    F,D,per,sol,name ,opt_obj = train_set.get_pair(-6)
-                # if F.sum()==None:
-                #     continue
+    gurobi_interm_obj = []
+    gurobi_interm_time = []
+
+    from gurobipy import Model,GRB,quicksum
+    import os
+    F,D,per,sol,name, opt_obj = train_set.get_pair(22)
+
     N = F.shape[0]
-    A = [(i,j) for i in range(N) for j in range(N) if i != j]
+    log_path = './log/LNS_QAP/' + name + '.log'
+
+    print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
+    print("####################################################")
     m = Model('QAP')
+    m.Params.TimeLimit =1000
     x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
     m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
-    # m.setObjective(quicksum(F[i,j]*D[k,l] for i,j in A),GRB.MINIMIZE)
+
     
-    m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N));
-    m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N));
+
+    count =0
+    I = []
+    J = []
+    for i in range(N):
+        if count == 70:
+            break
+        for j in range(N):
+            if per[i][j] == 1:
+                m.addConstr(x[i,j] == 1)
+                I.append(i)
+                J.append(j)
+                count += 1
+    # for i in range(60):
+    #     m.addConstr(x[i,i] == 1)
+    m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N) if i not in I)
+    m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N) if j not in J)
+    # m.Params.Method = 4
+    # m.Params.Presolve = 0
+    m.optimize(mycallback)
+
+    save_obj_path = './result_gurobi/' + name +'_obj.npy'
+    save_time_path = './result_gurobi/' + name +'_time.npy'
+
+    np.save(save_obj_path,gurobi_interm_obj)
+    np.save(save_time_path,gurobi_interm_time)
+
+    # sol, time_duration , obj= LNS_QAP(m,N,15,100,limited_times=5,verbose=True)
+    # print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
+    # print('gap is :{}'.format((obj-opt_obj)/opt_obj))
+
+
+
+
+
+
+
+
+
+
+
+
+    # x = m.addMVar(shape=(N, N), vtype=GRB.BINARY, name='x')
+
+    # # Linearization variable
+    # y = m.addMVar(shape=(N, N, N, N), vtype=GRB.BINARY, name='y')
+
+    # # Objective function
+    # obj = quicksum(F[i, j] * D[k, l] * y[i, j, k, l] for i in range(N) for j in range(N) for k in range(N) for l in range(N))
+    # m.setObjective(obj, GRB.MINIMIZE)
+
+    # # Row and column constraints for x
+    # m.addConstrs(quicksum(x[i, j] for j in range(N)) == 1 for i in range(N))
+    # m.addConstrs(quicksum(x[i, j] for i in range(N)) == 1 for j in range(N))
+
+    # # Linearization constraints
+    # for i in range(N):
+    #     for j in range(N):
+    #         for k in range(N):
+    #             for l in range(N):
+    #                 m.addConstr(y[i, j, k, l] <= x[i, k])
+    #                 m.addConstr(y[i, j, k, l] <= x[j, l])
+    #                 m.addConstr(y[i, j, k, l] >= x[i, k] + x[j, l] - 1)
+
+    # import pdb; pdb.set_trace()
+    # # Optimize the model
+    # m.optimize()
+
+    # Binary decision variable
+    # x = m.addMVar(shape=(N, N), vtype=GRB.BINARY, name='x')
+
+    # # Set the initial solution as a unit matrix
+    # initial_solution = np.eye(N)
+    # for i in range(N):
+    #     for j in range(N):
+    #         x[i, j].start = initial_solution[i, j]
+
+    # # Initial objective and constraints (based on the unit matrix)
+    # objective_expr = 0
+    # for i in range(N):
+    #     for j in range(N):
+    #         objective_expr += F[i, j] * D[i,j] * x[i, i] * x[j, j]
+
+    # m.setObjective(objective_expr, GRB.MINIMIZE)
+
+    # # Row and column constraints for x
+    # m.addConstrs(quicksum(x[i, j] for j in range(N)) == 1 for i in range(N))
+    # m.addConstrs(quicksum(x[i, j] for i in range(N)) == 1 for j in range(N))
+
+    # # Optimize the model
+    # m._x = x
+    # m._N = N
+    # m._F = F
+    # m._D = D
+    # m.optimize(callback_function)
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    # A = [eval(v.VarName[1:])+eval(u.VarName[1:]) for v in m.getVars() for u in m.getVars() if v.x >0.99 and u.x > 0.99]
+    # import pdb; pdb.set_trace()
+    # m.setObjective(quicksum(F[i,k]*D[j,l] for i,k,j,l in A),GRB.MINIMIZE)
+
+    # for i in range(N):
+    #     for j in range(N):
+    #         if i==j:
+    #             x[i,j].Start = 1.0
+    #         else:
+    #             x[i,j].Start = 0.0
+    
+    # m.update()
+    # import pdb;pdb.set_trace()
+    # m.setObjective(quicksum(F[i,j]*D[k,l] for i in range(N) for j in range(N) for k in range(N) for l in range(N) if x[i,k].x >0.99 and x[j,l] > 0.99),GRB.MINIMIZE)
+    # m.setObjective(quicksum(F[i,j]*((x[i]@D)@x.T[:j]) for i in range(N) for j in range(N)))
 
     # m.addConstr(x[0,0] == 1);
     # m.addConstr(x[1,1] == 1);
@@ -237,6 +384,6 @@ if __name__ == '__main__':
     
     # m.Params.TimeLimit = 320
     # m.optimize()
-    sol, time_duration , obj= LNS_QAP(m,N,8,100,limited_times=10,verbose=True)
-    print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
-    print('gap:{}'.format((obj-opt_obj)/opt_obj))
+    # sol, time_duration , obj= LNS_QAP(m,N,8,100,limited_times=10,verbose=True)
+    # print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
+    # print('gap:{}'.format((obj-opt_obj)/opt_obj))
