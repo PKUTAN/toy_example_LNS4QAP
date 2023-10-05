@@ -11,8 +11,8 @@ import pygmtools as pygm
 import time
 import copy
 
-cls_list = ['bur', 'chr', 'els', 'esc', 'had', 'kra', 'lipa', 'nug', 'rou', 'scr', 'sko', 'ste', 'tai', 'tho', 'wil']
-
+# cls_list = ['bur', 'chr', 'els', 'esc', 'had', 'kra', 'lipa', 'nug', 'rou', 'scr', 'sko', 'ste', 'tai', 'tho', 'wil']
+cls_list = ['erdos']
 class BaseDataset:
     def __init__(self):
         pass
@@ -33,13 +33,15 @@ class QAPLIB(BaseDataset):
             self.cls_list = cls_list
 
         self.data_list = []
-        self.qap_path = Path('./data/qapdata/')
+        # self.qap_path = Path('./data/taillard45e')
+        # self.qap_path = Path('./data/qapdata')
+        self.qap_path = Path('./data/synthetic_data/erdos30_0.6/train')
         for inst in self.cls_list:
             for dat_path in self.qap_path.glob(inst + '*.dat'):
                 name = dat_path.name[:-4]
                 prob_size = int(re.findall(r"\d+", name)[0])
                 if (self.sets == 'test' and prob_size > 90) \
-                    or (self.sets == 'train' and prob_size > 110):
+                    or (self.sets == 'train' and prob_size > 1000):
                     continue
                 self.data_list.append(name)
 
@@ -100,9 +102,13 @@ class QAPLIB(BaseDataset):
         name = self.data_list[idx]
 
         dat_path = self.qap_path / (name + '.dat')
-        sln_path = self.qap_path / (name + '.sln')
+        if Path.exists(self.qap_path / (name + '.sln')):
+            sln_path = self.qap_path / (name + '.sln')
+            sln_file = sln_path.open()
+        else:
+            sln_file = None
         dat_file = dat_path.open()
-        sln_file = sln_path.open()
+        
 
         def split_line(x):
             for _ in re.split(r'[,\s]', x.rstrip('\n')):
@@ -112,7 +118,10 @@ class QAPLIB(BaseDataset):
                     yield int(_)
 
         dat_list = [[_ for _ in split_line(line)] for line in dat_file]
-        sln_list = [[_ for _ in split_line(line)] for line in sln_file]
+        if sln_file != None:
+            sln_list = [[_ for _ in split_line(line)] for line in sln_file]
+        else:
+            sln_list = None
 
         prob_size = dat_list[0][0]
 
@@ -141,35 +150,63 @@ class QAPLIB(BaseDataset):
         #K = np.kron(Fj, Fi)
 
         # read solution
-        sol = sln_list[0][1]
-        obj = sln_list[0][-1]
-        perm_list = []
-        for _ in sln_list[1:]:
-            perm_list += _
-        assert len(perm_list) == prob_size
-        perm_mat = np.zeros((prob_size, prob_size), dtype=np.float32)
-        for r, c in enumerate(perm_list):
-            perm_mat[r, c - 1] = 1
+        if sln_list != None:
+            sol = sln_list[0][1]
+            obj = sln_list[0][-1]
+            perm_list = []
+            for _ in sln_list[1:]:
+                perm_list += _
+            assert len(perm_list) == prob_size
+            perm_mat = np.zeros((prob_size, prob_size), dtype=np.float32)
+            for r, c in enumerate(perm_list):
+                perm_mat[r, c - 1] = 1
 
-        return Fi, Fj, perm_mat, sol, name,obj
+            return Fi, Fj, perm_mat, sol, name,obj
+        else:
+            return Fi,Fj,None, None ,name, None
     
 def LNS_QAP(model,D,F ,prob_size ,local_size ,steps  ,limited_times = 3 ,verbose = False):
     prob_index = [i for i in range(prob_size)]
-    model.Params.TimeLimit = limited_times    
-    model.Params.OutputFlag = 0
-    start_time = time.time()
+    # m = Model('Init')
+    # m.Params.TimeLimit = 20    
+    # m.Params.OutputFlag = 0
 
-    sol = [[i,i] for i in range(prob_size)]
+    # ##presolve to get a maybe better initial start
+    # N = D.shape[0]
+    # x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
+    # m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
+    # m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N))
+    # m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N))
+    # m.Params.TimeLimit = 0
+    # m.optimize()
+    
+    # sol = solution(m)
+    
+    start_time = time.time()
+    init_loc = random.sample(prob_index,len(prob_index))
+
+    sol = [[i,j] for i,j in enumerate(init_loc)]
     best_obj = obj = float('inf')
     best_sol = None
-    for _ in range(steps):
+    count = 0
+    model.Params.OutputFlag = 0
+    for step in range(steps):
+        ##仅仅是需要一个中间模块（RL-learning based），来生成index
         index = sorted(random.sample(prob_index,local_size))
         out_index = np.setdiff1d(np.array(prob_index),np.array(index)).tolist()
-        sol ,new_obj= LNS(model.copy(),D,F,sol,index, out_index, start_time)
+        sol ,new_obj= LNS(model.copy(),D,F,sol,index, out_index, limited_times,start_time)
         if verbose == True:
-            print(new_obj)
+            print('step:{},obj:{},time:{},local size:{}'.format(step,new_obj,time.time()-start_time,local_size))
         if (obj - new_obj) == 0.:
-            local_size = min(20,local_size+1)
+            local_size = min(15,local_size+1)
+        else:
+            local_size = 10
+            count = 0
+
+        if local_size == 15:
+            count += 1
+        if count == 10:
+            break
 
         obj = new_obj
         if best_obj > obj:
@@ -180,13 +217,13 @@ def LNS_QAP(model,D,F ,prob_size ,local_size ,steps  ,limited_times = 3 ,verbose
     return  best_sol, (end_time-start_time), best_obj
 
 
-def LNS(model,D,F,sol,index, out_index, start_time):
+def LNS(model,D,F,sol,index, out_index, limit_time,start_time):
     # import pdb; pdb.set_trace()
     N = len(index)
     per_sol = form_per(sol)
     per_assigned = per_sol[out_index]
     sub_loc = sorted([j for i,j in sol if i in index])
-
+    model.Params.TimeLimit = limit_time 
     x = model.addMVar(shape=(N,N),vtype= GRB.BINARY,name='x')
     
     sub_D = D[sub_loc][:,sub_loc]
@@ -258,27 +295,34 @@ def mycallback(model, where):
         gurobi_interm_time.append(runtime)
     
 if __name__ == '__main__':
-    train_set = QAPLIB('train','tai')
+    train_set = QAPLIB('train','erdos')
     
     gurobi_interm_obj = []
     gurobi_interm_time = []
     from gurobipy import Model,GRB,quicksum
     import os
-    F,D,per,sol,name, opt_obj = train_set.get_pair(22)
+    
+    for i in range(900):
+        F,D,per,sol,name, opt_obj = train_set.get_pair(i)
+        # import pdb;pdb.set_trace()
 
-    N = F.shape[0]
-    log_path = './log/LNS_QAP/' + name + '.log'
+        N = F.shape[0]
 
-    print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
-    print("####################################################")
-    m = Model('QAP')
+        print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
+        print("####################################################")
+        m = Model('QAP')
 
-    sol, time_duration , obj= LNS_QAP(m,D,F,N,13,1000,limited_times=20,verbose=True)
-    print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
-    print('gap is :{}'.format((obj-opt_obj)/opt_obj))
+        sol, time_duration , obj= LNS_QAP(m,D,F,N,10,1000,limited_times=10,verbose=True)
+        print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
+        # print('gap is :{}'.format((obj-opt_obj)/opt_obj))
 
-    save_obj_path = './result_gurobi/' + name +'LNS_obj.npy'
-    save_time_path = './result_gurobi/' + name +'LNS_time.npy'
+        # save_LNS_BKS = './data/synthetic_data/erdos30_0.6/train/' + name +'_random_init_random_LNS.sln'
 
-    # np.save(save_obj_path,gurobi_interm_obj)
-    # np.save(save_time_path,gurobi_interm_time)
+        # with open(save_LNS_BKS, "w") as file:
+        #     file.write('obj:{}, sol:{}, time:{}'.format(obj,sol,time_duration))
+
+        # save_obj_path = './result_gurobi/' + name +'LNS_obj.npy'
+        # save_time_path = './result_gurobi/' + name +'LNS_time.npy'
+
+        # np.save(save_obj_path,gurobi_interm_obj)
+        # np.save(save_time_path,gurobi_interm_time)

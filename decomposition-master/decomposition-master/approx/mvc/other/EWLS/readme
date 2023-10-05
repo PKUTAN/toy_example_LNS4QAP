@@ -1,0 +1,26 @@
+EWLS is a solver for the minimum vertex cover problem.
+
+1. The input format
+The input graph is asked to be in ascii format. A samll exmple is given as follow:
+p edge 4 3
+e 1 2
+e 1 3
+e 2 4
+
+2. The parameter file
+EWLS also needs a parameter file to run on.
+The parameter file is named as "parameter.txt", and it should contain the following 4 terms: the graph file name, max steps, delta, the optimal size of vertex cover (optional). Here is an example:
+frb59-26-1.mis
+400000000
+2
+1475 
+
+If the optimal size of vertex cover is provided, then EWLS will terminate as soon as it finds a optimal vertex cover before it reaches max steps. 
+And if the optimal size of vertex cover is set to 0, EWLS will terminate only when it reaches max steps. In this case, a parameter file is like this:
+frb59-26-1.mis
+400000000
+2
+0
+
+3. Usage
+EWLS is a local search and break ties randomly which needs a random seed, so the command to run EWLS is: ./EWLS random seed value. For example: ./EWLS 46 will run EWLS with the random seed 46.

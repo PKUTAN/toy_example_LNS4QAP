@@ -5,7 +5,8 @@ from pathlib import Path
 import time
 import random
 
-cls_list = ['bur', 'chr', 'els', 'esc', 'had', 'kra', 'lipa', 'nug', 'rou', 'scr', 'sko', 'ste', 'tai', 'tho', 'wil']
+# cls_list = ['bur', 'chr', 'els', 'esc', 'had', 'kra', 'lipa', 'nug', 'rou', 'scr', 'sko', 'ste', 'tai', 'tho', 'wil']
+cls_list = ['erdos']
 
 class BaseDataset:
     def __init__(self):
@@ -27,13 +28,15 @@ class QAPLIB(BaseDataset):
             self.cls_list = cls_list
 
         self.data_list = []
-        self.qap_path = Path('./data/qapdata/')
+        # self.qap_path = Path('./data/taillard45e')
+        # self.qap_path = Path('./data/qapdata')
+        self.qap_path = Path('./data/synthetic_data/erdos30_0.6/train')
         for inst in self.cls_list:
             for dat_path in self.qap_path.glob(inst + '*.dat'):
                 name = dat_path.name[:-4]
                 prob_size = int(re.findall(r"\d+", name)[0])
                 if (self.sets == 'test' and prob_size > 90) \
-                    or (self.sets == 'train' and prob_size > 160):
+                    or (self.sets == 'train' and prob_size > 1000):
                     continue
                 self.data_list.append(name)
 
@@ -94,9 +97,13 @@ class QAPLIB(BaseDataset):
         name = self.data_list[idx]
 
         dat_path = self.qap_path / (name + '.dat')
-        sln_path = self.qap_path / (name + '.sln')
+        if Path.exists(self.qap_path / (name + '.sln')):
+            sln_path = self.qap_path / (name + '.sln')
+            sln_file = sln_path.open()
+        else:
+            sln_file = None
         dat_file = dat_path.open()
-        sln_file = sln_path.open()
+        
 
         def split_line(x):
             for _ in re.split(r'[,\s]', x.rstrip('\n')):
@@ -106,7 +113,10 @@ class QAPLIB(BaseDataset):
                     yield int(_)
 
         dat_list = [[_ for _ in split_line(line)] for line in dat_file]
-        sln_list = [[_ for _ in split_line(line)] for line in sln_file]
+        if sln_file != None:
+            sln_list = [[_ for _ in split_line(line)] for line in sln_file]
+        else:
+            sln_list = None
 
         prob_size = dat_list[0][0]
 
@@ -135,21 +145,20 @@ class QAPLIB(BaseDataset):
         #K = np.kron(Fj, Fi)
 
         # read solution
-        sol = sln_list[0][1]
-        obj = sln_list[0][-1]
-        perm_list = []
-        for _ in sln_list[1:]:
-            perm_list += _
-        assert len(perm_list) == prob_size
-        perm_mat = np.zeros((prob_size, prob_size), dtype=np.float32)
-        for r, c in enumerate(perm_list):
-            perm_mat[r, c - 1] = 1
-        sol_obj = (Fi*((perm_mat@Fj)@perm_mat.T)).sum()
-        if sol_obj != obj:
-            perm_mat = perm_mat.T
+        if sln_list != None:
+            sol = sln_list[0][1]
+            obj = sln_list[0][-1]
+            perm_list = []
+            for _ in sln_list[1:]:
+                perm_list += _
+            assert len(perm_list) == prob_size
+            perm_mat = np.zeros((prob_size, prob_size), dtype=np.float32)
+            for r, c in enumerate(perm_list):
+                perm_mat[r, c - 1] = 1
 
-        return Fi, Fj, perm_mat, sol, name,obj
-
+            return Fi, Fj, perm_mat, sol, name,obj
+        else:
+            return Fi,Fj,None, None ,name, None 
 
 def LNS_QAP(model ,prob_size ,local_size ,steps ,limited_times = 3 ,verbose = False):
     prob_index = [i for i in range(prob_size)]
@@ -207,13 +216,13 @@ def mycallback(model, where):
         gurobi_interm_time.append(runtime)
 
 if __name__ == '__main__':
-    train_set = QAPLIB('train','tai')
+    train_set = QAPLIB('train','erdos')
     gurobi_interm_obj = []
     gurobi_interm_time = []
 
     from gurobipy import Model,GRB,quicksum
     import os
-    F,D,per,sol,name, opt_obj = train_set.get_pair(22)
+    F,D,per,sol,name, opt_obj = train_set.get_pair(0)
 
     N = F.shape[0]
     log_path = './log/LNS_QAP/' + name + '.log'
@@ -227,22 +236,22 @@ if __name__ == '__main__':
 
     
 
-    count =0
-    I = []
-    J = []
-    for i in range(N):
-        if count == 70:
-            break
-        for j in range(N):
-            if per[i][j] == 1:
-                m.addConstr(x[i,j] == 1)
-                I.append(i)
-                J.append(j)
-                count += 1
+    # count =0
+    # I = []
+    # J = []
+    # for i in range(N):
+    #     if count == 70:
+    #         break
+    #     for j in range(N):
+    #         if per[i][j] == 1:
+    #             m.addConstr(x[i,j] == 1)
+    #             I.append(i)
+    #             J.append(j)
+    #             count += 1
     # for i in range(60):
     #     m.addConstr(x[i,i] == 1)
-    m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N) if i not in I)
-    m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N) if j not in J)
+    m.addConstrs(quicksum(x[i,j] for j in range(N))==1 for i in range(N))
+    m.addConstrs(quicksum(x[i,j] for i in range(N))==1 for j in range(N))
     # m.Params.Method = 4
     # m.Params.Presolve = 0
     m.optimize(mycallback)
