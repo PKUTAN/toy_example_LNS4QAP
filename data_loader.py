@@ -21,5 +21,5 @@ def worker_init_rand(worker_id):
 
 def get_dataloader(dataset, fix_seed=True, shuffle=False):
     return torch.utils.data.DataLoader(
-        dataset, batch_size=32, shuffle=shuffle, num_workers= 1,
+        dataset, batch_size=1, shuffle=shuffle, num_workers= 1,
         pin_memory=False, worker_init_fn=worker_init_fix if fix_seed else worker_init_rand)
