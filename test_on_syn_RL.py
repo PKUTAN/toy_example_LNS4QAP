@@ -14,14 +14,12 @@ from dataset import QAPDataset
 from data_loader import get_dataloader
 from util import *
 
-def LNS4instances(D,F,action,sol,limited_times = 3 ,verbose = False):
+def LNS4instances(model,D,F,action,sol,verbose = False):
     prob_index = [i for i in range(D.shape[1])]
-    model = Model('QAP')
-    model.Params.TimeLimit = limited_times    
-    model.Params.OutputFlag = 0
 
     next_sols = []
     next_objs = []
+
     for f,d,action,sol in zip(D,F,action,sol):
         f,d,sol = f.cpu().numpy(), d.cpu().numpy(),sol.cpu().numpy()
         index = sorted(action.tolist())
@@ -31,7 +29,6 @@ def LNS4instances(D,F,action,sol,limited_times = 3 ,verbose = False):
         next_objs.append(torch.tensor([obj_]))
         
     return  next_sols, next_objs
-
 
 def LNS4RL(model,D,F,sol,index, out_index, start_time):
     N = len(index)
@@ -145,6 +142,7 @@ def initial_sol(F,D,device):
 
 def featurize(F,D,cur_sol,device):
     b,n,n = F.shape
+    # import pdb;pdb.set_trace()
     
     features = torch.zeros((b,n,3*n)).to(device)
 
@@ -164,10 +162,10 @@ if __name__ == '__main__':
     parser.add_argument('--hidden2', default=300, type=int, help='hidden num of second fully connect layer')
     parser.add_argument('--rate', default=0.001, type=float, help='learning rate')
     parser.add_argument('--prate', default=0.0001, type=float, help='policy net learning rate (only for DDPG)')
-    parser.add_argument('--warmup', default=1, type=int, help='time without training but only filling the replay memory')
+    parser.add_argument('--warmup', default=10, type=int, help='time without training but only filling the replay memory')
     parser.add_argument('--discount', default=0.99, type=float, help='')
-    parser.add_argument('--bsize', default=1, type=int, help='minibatch size')
-    parser.add_argument('--rmsize', default=6000000, type=int, help='memory size')
+    parser.add_argument('--bsize', default=8, type=int, help='minibatch size')
+    parser.add_argument('--rmsize', default=490, type=int, help='memory size')
     parser.add_argument('--window_length', default=1, type=int, help='')
     parser.add_argument('--tau', default=0.001, type=float, help='moving average for target network')
     parser.add_argument('--ou_theta', default=0.15, type=float, help='noise theta')
@@ -190,17 +188,20 @@ if __name__ == '__main__':
     if args.seed > 0:
         np.random.seed(args.seed)
     
-    
+    batchsize = 16 
     train_dataset = QAPDataset('QAPLIB',900,sets = 'train')
-    train_dataloader = get_dataloader(train_dataset)
+    train_dataloader = get_dataloader(train_dataset,batchsize)
     N = len(train_dataset)
 
-    agent = DDPG(3*30, 1, args)
+    agent = DDPG(3*30, 1, batchsize, args)
 
-    batchsize = 1
     num_epochs = 10
-    rollout_steps = 20
-    local_size = 12
+    rollout_steps = 100
+    local_size = 8
+
+    model = Model('QAP')
+    model.Params.TimeLimit = 5    
+    model.Params.OutputFlag = 0
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -219,12 +220,13 @@ if __name__ == '__main__':
             for F,D in zip(Fs,Ds):
                 init_sol,obj = initial_sol(F,D,device)
                 init_sols.append(init_sol)
-                init_objs.append(obj)
+                init_objs.append(torch.tensor([obj]))
             init_sols = torch.stack(init_sols,dim= 0).to(device)
             init_objs = torch.stack(init_objs,dim= 0).to(device)
 
             init_features = deepcopy(featurize(Fs,Ds,init_sols,device))
 
+            # import pdb ; pdb.set_trace()
             cur_objs = init_objs
             features = init_features
             cur_sols = init_sols
@@ -242,10 +244,11 @@ if __name__ == '__main__':
                         actions = agent.random_action()
                         actions_index = torch.topk(torch.from_numpy(actions),local_size)[1].numpy()
                     else:
-                        actions = agent.select_action(features).squeeze(-1)
+                        actions = agent.select_action(features)
                         actions_index = torch.topk(torch.from_numpy(actions),local_size)[1].numpy()
-
-                next_sols,next_objs = LNS4instances(Fs,Ds,actions_index,cur_sols)
+                
+                # import pdb; pdb.set_trace()
+                next_sols,next_objs = LNS4instances(model,Fs,Ds,actions_index,cur_sols)
                 
                 next_sols = torch.stack(next_sols,dim=0).to(device)
                 next_objs = torch.stack(next_objs,dim=0).to(device)
@@ -267,11 +270,12 @@ if __name__ == '__main__':
                 cur_objs = next_objs
                 cur_sols = next_sols
                 
-                print('epoch:{},episode:{},t_rollout:{},reward:{}'.format(epoch,step,t_rollout,reward))
-                
+                             
                 if t_rollout > args.warmup:
                     agent.update_policy()
-                    print('policy_loss:{},critic_loss:{}'.format(agent.actor_loss,agent.critic_loss))
+                    # print('policy_loss:{},critic_loss:{}'.format(agent.actor_loss,agent.critic_loss))
+            
+            print('epoch:{},episode:{},t_rollout:{},name:{},reward:{}'.format(epoch,step,t_rollout,names,next_objs))
             step += 1
 
                 

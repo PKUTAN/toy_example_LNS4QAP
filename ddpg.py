@@ -15,7 +15,7 @@ from util import *
 criterion = nn.MSELoss()
 
 class DDPG(object):
-    def __init__(self, nb_states, nb_actions, args):
+    def __init__(self, nb_states, nb_actions, instance_batchsize, args):
         
         if args.seed > 0:
             self.seed(args.seed)
@@ -23,6 +23,7 @@ class DDPG(object):
         self.nb_states = nb_states
         self.nb_actions= nb_actions
         self.prob_size = nb_states//3
+        self.instance_batch_size = instance_batchsize
         
         # Create Actor and Critic Network
         net_cfg = {
@@ -67,20 +68,30 @@ class DDPG(object):
         state_batch, action_batch, reward_batch, \
         next_state_batch, terminal_batch = self.memory.sample_and_split(self.batch_size)
 
-        # Prepare for the target q batch
-        with torch.no_grad():
-            next_q_values = self.critic_target([
-                to_tensor(next_state_batch),
-                self.actor_target(to_tensor(next_state_batch)),
-            ])
+        state_batch = to_tensor(state_batch)
+        action_batch = to_tensor(action_batch)
+        reward_batch = to_tensor(reward_batch)
+        next_state_batch = to_tensor(next_state_batch)
+        terminal_batch = to_tensor(terminal_batch.astype(np.float))
 
-        target_q_batch = to_tensor(reward_batch) + \
-            self.discount*to_tensor(terminal_batch.astype(np.float))*next_q_values
+        # Prepare for the target q batch
+        next_action = self.actor_target(next_state_batch)
+        next_q_values = self.critic([next_state_batch,next_action.detach()])
+        # with torch.no_grad():
+        #     next_q_values = self.critic_target([
+        #         to_tensor(next_state_batch),
+        #         self.actor_target(to_tensor(next_state_batch)),
+        #     ])
+
+        # import pdb; pdb.set_trace()
+
+        target_q_batch = reward_batch + \
+            self.discount*terminal_batch*next_q_values
 
         # Critic update
         self.critic.zero_grad()
 
-        q_batch = self.critic([ to_tensor(state_batch), to_tensor(action_batch) ])
+        q_batch = self.critic([state_batch, action_batch])
         
         value_loss = criterion(q_batch, target_q_batch)
         self.critic_loss = value_loss
@@ -91,8 +102,8 @@ class DDPG(object):
         self.actor.zero_grad()
 
         policy_loss = -self.critic([
-            to_tensor(state_batch),
-            self.actor(to_tensor(state_batch))
+            state_batch,
+            self.actor(state_batch)
         ])
 
         policy_loss = policy_loss.mean()
@@ -118,11 +129,18 @@ class DDPG(object):
 
     def observe(self, r_t, s_t1, done):
         if self.is_training:
-            self.memory.append(self.s_t, self.a_t, r_t, done)
+            bts = r_t.shape[0]
+            # import pdb; pdb.set_trace()
+            for b in range(bts):
+                self.memory.append(np.array([self.s_t[b]]), np.array([self.a_t[b]]), np.array([r_t[b]]), done)
             self.s_t = s_t1
 
     def random_action(self):
-        action = np.array([np.random.uniform(0,1.,self.nb_actions) for _ in range(self.prob_size)]).reshape(self.batch_size,-1)
+        action = []
+        for i in range(self.instance_batch_size):
+            action.append(np.array([np.random.uniform(0,1.,self.nb_actions) for _ in range(self.prob_size)]))
+        
+        action = np.stack(action,axis=0).reshape(self.instance_batch_size,-1)
         self.a_t = action
         return action
 

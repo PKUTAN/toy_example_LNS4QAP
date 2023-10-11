@@ -201,7 +201,7 @@ class SequentialMemory(Memory):
         state1_batch = np.array(state1_batch).reshape(batch_size,self.prob_size,-1)
         terminal1_batch = np.array(terminal1_batch).reshape(batch_size,-1)
         reward_batch = np.array(reward_batch).reshape(batch_size,-1)
-        action_batch = np.array(action_batch).reshape(batch_size,self.prob_size,-1)
+        action_batch = np.array(action_batch).reshape(batch_size,self.prob_size)
 
         return state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch
 

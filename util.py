@@ -2,7 +2,8 @@
 import os
 import torch
 from torch.autograd import Variable
-device = 'cuda:0'
+
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 USE_CUDA = torch.cuda.is_available()
 FLOAT = torch.cuda.FloatTensor if USE_CUDA else torch.FloatTensor
 

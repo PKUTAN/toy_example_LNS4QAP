@@ -1,9 +1,9 @@
 ### 需要完成的任务
 
 * [X] 如何将gurobi用在更大的qap problem上：variable在80个以上的都不好求解，e.g. tai80，tai100 （利用GPT，但是结果不尽人意，感觉是一个很技巧的工程问题）实际上花时间的应该是presolve，后续矩阵计算还算可以（**150以上确实算不动了，系统直接kill了**）
-* [ ] 如何将强化学习引入到local search当中，local-size and local variable selections are both very important
+* [X] 如何将强化学习引入到local search当中，local-size and local variable selections are both very important
 * [ ] 强化学习是否可以有multi policies for destroy purpose?
-* [ ] 是否可以生成synthetic data 4 GM 用来训练我们的强化学习模型？
+* [X] 是否可以生成synthetic data 4 GM 用来训练我们的强化学习模型？
 * [ ] 研究和实验是否可以加入adaptive acceptance criteria来提升搜索的效率？
 * [X] 在不同的epoch采用不同大小的local size，比如前几个epoch用大的local size，后几个epoch用较小的local size。（效果不显著，认为对于qap问题，选择正确的匹配比local size大小要关键）
 * [ ] 用NGM生成一个初始解。
@@ -78,3 +78,9 @@ tai系列: 30a random search lack than gurobi; 80及其以上的instance确实�
 #### 9.26:
 
 * [X] 解决无法处理过大instance的问题。
+
+
+#### 10.10
+
+* [ ] 阅读DDPG的论文
+* [ ] 需要给observation 加入 batch normalization
