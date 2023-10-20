@@ -248,7 +248,7 @@ def sample_partitions(cluster_probs, mode='train'):
       A sampled partition represented by a dict.
       The log probability of sampling this partition.
     '''
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     num_clusters = len(cluster_probs[0])
     cluster_range = list(range(num_clusters))
 
@@ -256,11 +256,34 @@ def sample_partitions(cluster_probs, mode='train'):
     log_prob = 0
     entropy = 0
 
-    if mode == 'train' or mode == 'evaluate':
+    if mode == 'train'  or mode == 'evaluate':
         rvs = Categorical(cluster_probs)
         samples = rvs.sample()
+        if sum(samples) > 10:
+            eraze = sum(samples) - 10
+            sam_np = samples.cpu().numpy()
+            sam_idx = np.array(np.where(sam_np == 1)[0])
+            
+            sam_0 = cluster_probs[sam_idx][:,1]
+            sam_0_idx = torch.argsort(sam_0)
+            for i in range(eraze):
+                idx = sam_idx[sam_0_idx[i]]
+                samples[idx] = 0
+        elif sum(samples) < 10:
+            eraze = 10 - sum(samples) 
+            sam_np = samples.cpu().numpy()
+            sam_idx = np.array(np.where(sam_np == 0)[0])
+            
+            sam_0 = cluster_probs[sam_idx][:,0]
+            sam_0_idx = torch.argsort(-sam_0)
+            for i in range(eraze):
+                idx = sam_idx[sam_0_idx[i]]
+                samples[idx] = 1
+
+                
         log_probs = rvs.log_prob(samples)
         entropies = rvs.entropy()
+        # import pdb; pdb.set_trace()
 
         for i in range(len(cluster_probs)):
             partitions[samples[i].item()].append(i)
@@ -285,15 +308,15 @@ def sample_partitions(cluster_probs, mode='train'):
     return partitions, log_prob, entropy / len(cluster_probs)
 
 
-def get_adj_matrix(graph):
-    '''Compute the adjacency matrix of a graph. For weighted graphs, the adjacency matrix is
-    weighted as well. Include a self-loop for each node.'''
+# def get_adj_matrix(graph):
+#     '''Compute the adjacency matrix of a graph. For weighted graphs, the adjacency matrix is
+#     weighted as well. Include a self-loop for each node.'''
 
-    adj = nx.to_scipy_sparse_matrix(graph)
-    adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
-    adj = utils.normalize(adj + sp.eye(adj.shape[0]))
+#     adj = nx.to_scipy_sparse_matrix(graph)
+#     adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+#     adj = utils.normalize(adj + sp.eye(adj.shape[0]))
         
-    return utils.sparse_mx_to_torch_sparse_tensor(adj)    
+#     return utils.sparse_mx_to_torch_sparse_tensor(adj)    
 
 
 def initialize_mvc_objective(model):
@@ -304,9 +327,77 @@ def initialize_mvc_objective(model):
         obj += objective.getCoeff(i)
 
     return obj
-    
 
-def initialize_solution(var_dict, p_type, model, init_time=0, use_init=False):
+
+def form_per(sol):
+    N = len(sol)
+    per = np.zeros((N,N))
+
+    for i,j in sol:
+        per[i,j] = 1
+
+    return per
+
+
+def cal_obj(sol,D,F):
+    per = form_per(sol)
+    obj = np.sum(F*(per@D@per.T))  
+    return obj
+
+
+def solution(model):
+    sol = []
+    for v in model.getVars():
+        if v.x == 1:
+            sol.append(eval(v.VarName[1:]))
+    return sol
+
+def sub2whole(sub_sol,sol,index):
+    sol_out = sol[:]
+    sub_prob_size = len(sub_sol)
+    unassigned_loc = sorted([loc for idx, loc in sol_out if idx in index])
+    unassigned_flow = index
+
+    for i in range(sub_prob_size):
+        sol_out[unassigned_flow[i]][1] = unassigned_loc[sub_sol[i][1]]
+    
+    return sol_out
+
+def initial_sol(F,D):
+    '''
+        We offer mutiple initial methods including:
+        1) random initialize 
+        2) learnable network initialize
+    '''
+    
+    N = F.shape[1]
+    
+    ####random initialize
+    prob_index = [i for i in range(N)]
+    # init_loc = random.sample(prob_index,len(prob_index))
+    # sol = [[i,j] for i,j in enumerate(init_loc)]
+    sol = [[i,i] for i in range(N)]
+
+    obj = cal_obj(sol,D,F)
+
+    ####learnable network initialize(TODO)
+
+    return sol,obj   
+
+def featurize(F,D,cur_sol):
+    n,n = F.shape
+    # import pdb;pdb.set_trace()
+    
+    features = np.zeros((n,3*n))
+
+    sol = form_per(cur_sol)
+    loc_fea = np.matmul(sol,D)
+    features = np.concatenate([F,sol,loc_fea] , axis = -1)
+
+    return features 
+
+
+def initialize_solution(p_type, model, init_time=0, use_init=False):
     '''Initialize a feasible solution.
 
     Arguments:
@@ -322,37 +413,23 @@ def initialize_solution(var_dict, p_type, model, init_time=0, use_init=False):
     sol_vec = None
     init_obj = 0
 
-    if p_type != 'psulu' and not use_init:
-        for k, var_list in var_dict.items():
-            if sol_vec is None:
-                sol_vec = np.zeros((len(var_dict), len(var_list)))
-            for i, v in enumerate(var_list):
-                if p_type == 'maxcut':
-                    sol[v] = 0
-                elif p_type == 'mvc':
-                    sol[v] = 1
-                    sol_vec[k, i] = 1.0
-                    init_obj = initialize_mvc_objective(model)
-                elif p_type == 'cats':
-                    sol[v] = 0
-    else:
-        # import pdb; pdb.set_trace()
-        model_copy = model.copy()
-        model_copy.setParam('MIPFocus', 1)
-        model_copy.setParam('TimeLimit', init_time)
-        model_copy.setParam('OutputFlag', 0)
-        model_copy.optimize()
 
-        try:
-            sol, sol_vec = extract_solution(model_copy, var_dict)
-            init_obj = model_copy.ObjVal
-        except:
-            model_copy.reset()
-            model_copy.setParam('TimeLimit', 100000)
-            model_copy.setParam('SolutionLimit', 1)
-            model_copy.optimize()
-            sol, sol_vec = extract_solution(model_copy, var_dict)
-            init_obj = model_copy.ObjVal            
+    # import pdb; pdb.set_trace()
+    # model_copy = model.copy()
+    # model_copy.setParam('MIPFocus', 1)
+    # model_copy.setParam('TimeLimit', init_time)
+    # model_copy.optimize()
+
+    # try:
+    #     sol, sol_vec = extract_solution(model_copy, var_dict)
+    #     init_obj = model_copy.ObjVal
+    # except:
+    #     model_copy.reset()
+    #     model_copy.setParam('TimeLimit', 100000)
+    #     model_copy.setParam('SolutionLimit', 1)
+    #     model_copy.optimize()
+    #     sol, sol_vec = extract_solution(model_copy, var_dict)
+    #     init_obj = model_copy.ObjVal            
 
     return sol, sol_vec, init_obj
 

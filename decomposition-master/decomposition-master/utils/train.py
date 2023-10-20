@@ -8,6 +8,8 @@ import shutil
 import time
 import torch
 torch.manual_seed(0)
+from torch.utils.tensorboard import SummaryWriter
+from copy import deepcopy
 
 import networkx as nx
 import numpy as np
@@ -21,6 +23,7 @@ from algo import reinforce
 
 from multiprocessing import Pool
 
+from gurobipy import Model,GRB,quicksum
 from sklearn.decomposition import PCA
 import scipy.sparse as sp
 
@@ -28,6 +31,7 @@ from algo import supervise
 from utils import common
 from utils import coordinate_descent
 from utils import models
+from dataset import QAPLIB
 
 
 FLAGS = flags.FLAGS
@@ -41,23 +45,22 @@ flags.DEFINE_integer('K', None, 'Number of clusters.')
 flags.DEFINE_integer('temp', None, 'Temperature for computing soft cluster assignments.')
 flags.DEFINE_string('dir_problems', None, 'Directory of the problems.')
 flags.DEFINE_string('dir_graphs', None, 'Directory of the graphs.')
-#flags.DEFINE_string('p_type', None, 'Problem type.')
-#flags.DEFINE_integer('steps', None, 'Number of steps for each episode.')
+# flags.DEFINE_string('p_type', None, 'Problem type.')
+# flags.DEFINE_integer('steps', None, 'Number of steps for each episode.')
 flags.DEFINE_integer('iterations', None, 'Number of iterations for training.')
-#flags.DEFINE_integer('time_limit', None, 'Max time for solving each problem.')
+# flags.DEFINE_integer('time_limit', None, 'Max time for solving each problem.')
 flags.DEFINE_integer('n_traj', None,
                      'Number of trajectories to sample for each iteration.')
 flags.DEFINE_integer('kmeans_iter', None, 'Number of iterations to run kmeans for.')
-#flags.DEFINE_string('network', None, 'Network architecture for the GCN.')
-#flags.DEFINE_string('mode', 'train', 'train or test.')
-#flags.DEFINE_string('model_dir', None, 'Path to a trained model.')
+# flags.DEFINE_string('network', None, 'Network architecture for the GCN.')
+# flags.DEFINE_string('mode', 'train', 'train or test.')
+# flags.DEFINE_string('model_dir', None, 'Path to a trained model.')
 flags.DEFINE_string('algo', None, 'compare or reinforce.')
 
 
 def train(agent,
-          problems,
+          model,
           graphs,
-          var_dicts,
           steps,
           iterations,
           n_traj,
@@ -100,14 +103,13 @@ def train(agent,
         train_features = []
         train_clusters = []
         
-        for problem, graph, var_dict in zip(problems, graphs, var_dicts):
+        for F,D in graphs:
             problem_clusters = []
             problem_features = []
             # problem_rewards and problem_log_probs are lists of lists.
             problem_log_probs = []
             problem_rewards = []
-            init_sol, init_sol_feature, init_obj = common.initialize_solution(
-                var_dict, p_type, problem)
+            init_sol, init_obj = common.initial_sol(F,D)
             # warmstart_problem = common.set_warmstart_vector(problem.copy(), init_sol)
             # warmstart_problem.optimize()
             # init_obj = warmstart_problem.ObjVal
@@ -115,17 +117,9 @@ def train(agent,
             #                                                      var_dict)
             # adj = common.get_adj_matrix(graph)
             # normalized_laplacian = nx.normalized_laplacian_matrix(graph).todense()
-            if p_type == 'cats':
-                laplacian = graph
-            else:
-                laplacian = nx.laplacian_matrix(graph).todense()
-            # adjacency = nx.adjacency_matrix(graph).todense()
-            
-            pca = PCA(n_components=agent.model.network[0]-1)
-        
-            pca_laplacian = pca.fit_transform(laplacian)
 
-            for _ in range(n_traj):
+
+            for traj in range(n_traj):
 
                 # record log probs and rewards for this individual trajectory
                 log_probs = []
@@ -134,34 +128,41 @@ def train(agent,
                 features = []
                 # init_node_features = torch.eye(len(graph))
 
-                combined = np.concatenate((pca_laplacian, init_sol_feature), axis=1)
+                combined = common.featurize(F,D,init_sol)
                 init_feature = torch.as_tensor(combined).float()
                 # init_features = init_node_features
                 
                 total_reward = 0
                 obj = init_obj
                 feature = init_feature
-                sol = init_sol
+                sol = deepcopy(init_sol)
 
                 for i in range(steps):
                     # init_node_features = torch.randn((len(graph), agent.nout))
                     partitions, log_prob = (
                         agent.select_action(feature, mode='train'))
-                    # import pdb; pdb.set_trace()
-                    new_sol, new_sol_vec, _, new_obj = \
+
+                    # import pdb;pdb.set_trace()
+                    new_sol, new_obj = \
                         coordinate_descent.coordinate_descent_by_clusters(
-                            problem.copy(), partitions, var_dict, sol)
-                    new_sol_feature = np.c_[new_sol_vec]
-                    combined = np.concatenate((pca_laplacian, new_sol_feature), axis=1)
+                            F,D,model.copy(), partitions, sol,True)
+                    # new_sol_feature = np.c_[new_sol_vec]
+
+                    combined = common.featurize(F,D,new_sol)
                     feature = torch.as_tensor(combined).float()
                     print('objective: ', new_obj)
-
+                    
+                    # import pdb;pdb.set_trace()
                     # new_sol_feature = torch.tensor(new_sol_vec).unsqueeze(0).t()
-
+                    if traj == 3:
+                        print(partitions)
                     # new_features = new_features.cpu()
                     # features = torch.cat((new_features, new_sol_features), dim=1)
                     # feature = torch.cat((init_node_feature, new_sol_feature), dim=1)
-                    reward = obj - new_obj
+                    if obj - new_obj == 0:
+                        reward = 0
+                    else:
+                        reward = (obj - new_obj)/100 + 100
                     # print('reward: ', reward)
                     total_reward += reward
                     rewards.append(reward)
@@ -169,8 +170,8 @@ def train(agent,
                     clusters.append(partitions)
                     features.append(feature)
 
-                    obj = new_obj
-                    sol = new_sol
+                    obj = deepcopy(new_obj)
+                    sol = deepcopy(new_sol)
 
                 print('----------')
                 total_rewards.append(total_reward)
@@ -195,6 +196,7 @@ def train(agent,
         min_objs.append(np.min(final_objs))
         end_time = time.time()
 
+        # import pdb; pdb.set_trace()
         agent.update(train_log_probs, train_rewards)
         # agent.update_with_features(train_features,
         #                            train_clusters,
@@ -289,7 +291,7 @@ def convert_to_network(network_str):
     
         
 def main(argv):
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
     # device = torch.device("cpu")
     nfeat = FLAGS.nfeat
     nhid = FLAGS.nhid
@@ -310,43 +312,29 @@ def main(argv):
     model_dir = FLAGS.model_dir
     algo = FLAGS.algo
 
-    if p_type == 'maxcut' or p_type == 'mvc':
-        dir_graphs = dir_problems.replace('lpfiles', 'gpickle')
-    elif p_type == 'cats':
-        dir_graphs = dir_problems.replace('_lp', '_adj')
-    elif p_type == 'psulu':
-        dir_graphs = dir_problems.replace('lpfiles', 'adj')
+    # if p_type == 'maxcut' or p_type == 'mvc':
+    #     dir_graphs = dir_problems.replace('lpfiles', 'gpickle')
+    # elif p_type == 'cats':
+    #     dir_graphs = dir_problems.replace('_lp', '_adj')
+    # elif p_type == 'psulu':
+    #     dir_graphs = dir_problems.replace('lpfiles', 'adj')
+
+    train_set = QAPLIB('train','erdos')
+    F,D,per,sol,name, opt_obj = train_set.get_pair(0)
         
-    problems = []
-    var_dicts = []
+    # problems = []
+    # var_dicts = []
     graphs = []
 
-    # if mode == 'train':
-    #     network = convert_to_network(FLAGS.network)
-    #     problem_dirs = dir_problems.rsplit(sep='/', maxsplit=1)
-    #     problem_prefix = problem_dirs[0]
-    #     problem_suffix = problem_dirs[1]
-    #     timestamp = time.strftime("%Y_%m_%d_%H_%M_%S")
-    #     # information to save to a log dir:
-    #     # model details (save a copy of train.sh)
-    #     # training statistics
-    #     log_dir = os.path.join(problem_prefix,
-    #                            '%s_train_logs' %problem_suffix,
-    #                            timestamp)
-    #     if not os.path.exists(log_dir):
-    #         os.makedirs(log_dir)
-
-    #     # save a copy of train.sh
-    #     shutil.copyfile('scripts/train.sh', os.path.join(log_dir, 'train.sh'))
-
-    #     # file to save training stats
-    #     log_stats = os.path.join(log_dir, 'stats.txt')
-    #     # file to save the trained model
-    #     model_dir = os.path.join(log_dir, 'models')
+    graphs.append((F,D))
+    model = Model('QAP')
+    model.Params.TimeLimit = 5    
+    model.Params.OutputFlag = 0
 
     if FLAGS.network:
         network = convert_to_network(FLAGS.network)
 
+    #加载数据，定义agent，cluster_model这几个基础模块
     if mode == 'train':
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
@@ -371,51 +359,50 @@ def main(argv):
     else:
         agent = torch.load(model_dir)
     
-    for problem_file in os.listdir(dir_problems):
-        if problem_file.endswith('lp'):
-            problem_prefix = problem_file.split('.')[0]
-            abs_problem_filename = os.path.join(dir_problems, problem_file)
-            abs_var_dict_filename = os.path.join(dir_problems, problem_prefix+'.pkl')
-            if p_type == 'cats':
-                abs_graph_filename = os.path.join(dir_graphs, problem_prefix+'.npz')        
-            else:
-                abs_graph_filename = os.path.join(dir_graphs, problem_prefix+'.gpickle')
-            problem = gurobipy.read(abs_problem_filename)
-            problem.setParam('MIPFocus', 1)
-            problem.setParam('TimeLimit', time_limit)
-            problem.setParam('OutputFlag', 0)
-            problems.append(problem)
+    # for problem_file in os.listdir(dir_problems):
+    #     if problem_file.endswith('lp'):
+    #         problem_prefix = problem_file.split('.')[0]
+    #         abs_problem_filename = os.path.join(dir_problems, problem_file)
+    #         abs_var_dict_filename = os.path.join(dir_problems, problem_prefix+'.pkl')
+    #         if p_type == 'cats':
+    #             abs_graph_filename = os.path.join(dir_graphs, problem_prefix+'.npz')        
+    #         else:
+    #             abs_graph_filename = os.path.join(dir_graphs, problem_prefix+'.gpickle')
+    #         problem = gurobipy.read(abs_problem_filename)
+    #         problem.setParam('MIPFocus', 1)
+    #         problem.setParam('TimeLimit', time_limit)
+    #         problem.setParam('OutputFlag', 0)
+    #         problems.append(problem)
 
-            if os.path.exists(abs_var_dict_filename):
-                var_dicts.append(pickle.load(open(abs_var_dict_filename, "rb")))
-            else:
-                var_dicts.append(common.generate_var_dict(problem, p_type))
+    #         if os.path.exists(abs_var_dict_filename):
+    #             var_dicts.append(pickle.load(open(abs_var_dict_filename, "rb")))
+    #         else:
+    #             var_dicts.append(common.generate_var_dict(problem, p_type))
 
-            if p_type == 'cats':
-                graphs.append(sp.load_npz(abs_graph_filename).todense())
-            else:
-                graphs.append(nx.read_gpickle(abs_graph_filename))
+    #         if p_type == 'cats':
+    #             graphs.append(sp.load_npz(abs_graph_filename).todense())
+    #         else:
+    #             graphs.append(nx.read_gpickle(abs_graph_filename))
 
         
     if mode == 'train':
         agent = train(agent,
-                      problems,
+                      model,
                       graphs,
-                      var_dicts,
                       steps,
                       iterations,
                       n_traj,
                       p_type,
                       log_stats,
                       model_dir)
-    else:
-        evaluate(agent,
-                 problems,
-                 graphs,
-                 var_dicts,
-                 steps,
-                 n_traj,
-                 p_type)
+    # else:
+    #     evaluate(agent,
+    #              problems,
+    #              graphs,
+    #              var_dicts,
+    #              steps,
+    #              n_traj,
+    #              p_type)
         # supervise.evaluate(model_dir, network, None, None, dir_graphs, dir_problems,
         #                    device, steps, p_type, time_limit, alg_name='rl')
     

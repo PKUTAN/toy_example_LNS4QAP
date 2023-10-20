@@ -33,7 +33,7 @@ class QAPLIB(BaseDataset):
             self.cls_list = cls_list
 
         self.data_list = []
-        self.qap_path = Path('./data/synthetic_data/erdos30_0.6/train')
+        self.qap_path = Path('./data/synthetic_data/erdos10_0.6/train')
         # self.qap_path = Path('./data/qapdata')
         for inst in self.cls_list:
             for dat_path in self.qap_path.glob(inst + '*.dat'):

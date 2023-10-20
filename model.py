@@ -32,7 +32,7 @@ class Actor(nn.Module):
         out = self.fc2(out)
         out = self.tanh(out)
         out = self.fc3(out)
-        out = F.softmax(out.squeeze(-1),dim=-1)
+        out = torch.sigmoid(out.squeeze(-1),dim=-1)
 
         return out
 

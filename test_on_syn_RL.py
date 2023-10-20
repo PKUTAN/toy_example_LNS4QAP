@@ -148,7 +148,8 @@ def featurize(F,D,cur_sol,device):
 
     for i in range(b):
         sol = form_per(cur_sol[i],device)
-        features[i] = torch.cat([F[i],D[i],sol] , dim= -1)
+        loc_fea = torch.matmul(sol,D[i])
+        features[i] = torch.cat([F[i],sol,loc_fea] , dim= -1)
 
     return features 
 
@@ -164,7 +165,7 @@ if __name__ == '__main__':
     parser.add_argument('--prate', default=0.0001, type=float, help='policy net learning rate (only for DDPG)')
     parser.add_argument('--warmup', default=10, type=int, help='time without training but only filling the replay memory')
     parser.add_argument('--discount', default=0.99, type=float, help='')
-    parser.add_argument('--bsize', default=8, type=int, help='minibatch size')
+    parser.add_argument('--bsize', default=80, type=int, help='minibatch size')
     parser.add_argument('--rmsize', default=490, type=int, help='memory size')
     parser.add_argument('--window_length', default=1, type=int, help='')
     parser.add_argument('--tau', default=0.001, type=float, help='moving average for target network')
