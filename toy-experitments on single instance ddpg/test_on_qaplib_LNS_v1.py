@@ -10,6 +10,7 @@ import re
 import pygmtools as pygm
 import time
 import copy
+from tqdm import tqdm
 
 # cls_list = ['bur', 'chr', 'els', 'esc', 'had', 'kra', 'lipa', 'nug', 'rou', 'scr', 'sko', 'ste', 'tai', 'tho', 'wil']
 cls_list = ['erdos']
@@ -35,7 +36,7 @@ class QAPLIB(BaseDataset):
         self.data_list = []
         # self.qap_path = Path('./data/taillard45e')
         # self.qap_path = Path('./data/qapdata')
-        self.qap_path = Path('./data/synthetic_data/erdos10_0.6/')
+        self.qap_path = Path('./data/synthetic_data/erdos20_0.6/')
         for inst in self.cls_list:
             for dat_path in self.qap_path.glob(inst + '*.dat'):
                 name = dat_path.name[:-4]
@@ -305,19 +306,28 @@ if __name__ == '__main__':
     gurobi_interm_time = []
     from gurobipy import Model,GRB,quicksum
     import os
-    
-    for i in range(1):
-        F,D,per,sol,name, opt_obj = train_set.get_pair(i)
+    best = 0
+    objs = []
+    for i in tqdm(range(200)):
+        F,D,per,sol,name, opt_obj = train_set.get_pair(0)
         # import pdb;pdb.set_trace()
 
         N = F.shape[0]
 
-        print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
-        print("####################################################")
+        # print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
+        # print("####################################################")
         m = Model('QAP')
+        m.Params.OutputFlag = 0
 
-        sol, time_duration , obj= LNS_QAP(m,D,F,N,5,100,limited_times=10,verbose=True)
-        print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
+        sol, time_duration , obj= LNS_QAP(m,D,F,N,12,10,limited_times=5,verbose=False)
+        objs.append(obj)
+        if best > obj:
+            best = obj
+    
+    print(best)
+    objs = np.array(objs)
+    np.save('./obj_10_step_12.npy',objs)
+        # print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))
         # print('gap is :{}'.format((obj-opt_obj)/opt_obj))
 
         # save_LNS_BKS = './data/synthetic_data/erdos30_0.6/train/' + name +'_random_init_random_LNS.sln'

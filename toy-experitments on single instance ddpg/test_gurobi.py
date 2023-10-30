@@ -30,7 +30,7 @@ class QAPLIB(BaseDataset):
         self.data_list = []
         # self.qap_path = Path('./data/taillard45e')
         # self.qap_path = Path('./data/qapdata')
-        self.qap_path = Path('./data/synthetic_data/erdos10_0.6/')
+        self.qap_path = Path('./data/synthetic_data/erdos20_0.6/')
         for inst in self.cls_list:
             for dat_path in self.qap_path.glob(inst + '*.dat'):
                 name = dat_path.name[:-4]
@@ -230,7 +230,7 @@ if __name__ == '__main__':
     print('The QAP problem is:{}, and the best solution is:{}'.format(name,sol))
     print("####################################################")
     m = Model('QAP')
-    m.Params.TimeLimit =1000
+    m.Params.TimeLimit =3
     x = m.addMVar(shape = (N,N), vtype= GRB.BINARY,name='x')
     m.setObjective(quicksum(quicksum(F*(x@D@x.T))),GRB.MINIMIZE)
 
@@ -256,11 +256,11 @@ if __name__ == '__main__':
     # m.Params.Presolve = 0
     m.optimize(mycallback)
 
-    save_obj_path = './result_gurobi/' + name +'_obj.npy'
-    save_time_path = './result_gurobi/' + name +'_time.npy'
+    # save_obj_path = './result_gurobi/' + name +'_obj.npy'
+    # save_time_path = './result_gurobi/' + name +'_time.npy'
 
-    np.save(save_obj_path,gurobi_interm_obj)
-    np.save(save_time_path,gurobi_interm_time)
+    # np.save(save_obj_path,gurobi_interm_obj)
+    # np.save(save_time_path,gurobi_interm_time)
 
     # sol, time_duration , obj= LNS_QAP(m,N,15,100,limited_times=5,verbose=True)
     # print('The solution is:{} , the objective value is: {}, the time duration is:{}'.format(sol,obj,time_duration))

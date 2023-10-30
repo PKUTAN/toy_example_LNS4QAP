@@ -108,7 +108,7 @@ class DDPG(object):
 
         action_batch_prob = torch.mean(torch.log(action_batch_prob),dim=-1) ####训练不稳定
 
-        policy_loss = - self.critic([
+        policy_loss = -   self.critic([
             state_batch,
             self.actor(state_batch)
         ])
@@ -161,40 +161,41 @@ class DDPG(object):
         actions = to_numpy(
             self.actor(s_t)
         )
-        actions += self.is_training*max(self.epsilon, 0)*self.random_process.sample()
+        # actions += self.is_training*max(self.epsilon, 0)*self.random_process.sample()
         # import pdb; pdb.set_trace()
 
         actions_prob = deepcopy(actions)
        
-        actions = np.clip(actions,0.2,0.8)
-        actions = np.random.binomial(1, actions)  
-        actions =np.where(actions > 0.5, actions, 0.)  
-        actions =np.where(actions == 0., actions, 1.)  
+        actions = np.clip(actions,0.1,0.9)
+        actions = np.random.binomial(1, actions) 
+        # actions = np.round(actions) 
+        # actions =np.where(actions > 0.5, actions, 0.)  
+        # actions =np.where(actions == 0., actions, 1.)  
         indices = np.array([np.where(actions == 1)[1]])
 
         # import pdb; pdb.set_trace()
-        if indices.shape[1] > local_size  or indices.shape[1] < local_size -2:
-            # import pdb; pdb.set_trace()
-            if indices.shape[1] > local_size :
-                sort_index = torch.topk(torch.from_numpy(-actions_prob),prob_size)[1].numpy()
-                eraze = indices.shape[1]-local_size 
-                for i in range(prob_size):
-                    if eraze == 0:
-                        break
-                    if actions[0][sort_index[0][i]] == 1:
-                        actions[0][sort_index[0][i]] = 0.
-                        eraze -= 1
-                indices = np.array([np.where(actions == 1)[1]])
-            elif indices.shape[1] < local_size -2:
-                sort_index = torch.topk(torch.from_numpy(actions_prob),prob_size)[1].numpy()
-                eraze = local_size-2 - indices.shape[1]
-                for i in range(prob_size):
-                    if eraze == 0:
-                        break
-                    if actions[0][sort_index[0][i]] == 0:
-                        actions[0][sort_index[0][i]] = 1.
-                        eraze -= 1
-                indices = np.array([np.where(actions == 1)[1]])
+        # if indices.shape[1] > local_size  or indices.shape[1] < local_size -2:
+        #     # import pdb; pdb.set_trace()
+        #     if indices.shape[1] > local_size :
+        #         sort_index = torch.topk(torch.from_numpy(-actions_prob),prob_size)[1].numpy()
+        #         eraze = indices.shape[1]-local_size 
+        #         for i in range(prob_size):
+        #             if eraze == 0:
+        #                 break
+        #             if actions[0][sort_index[0][i]] == 1:
+        #                 actions[0][sort_index[0][i]] = 0.
+        #                 eraze -= 1
+        #         indices = np.array([np.where(actions == 1)[1]])
+        #     elif indices.shape[1] < local_size -2:
+        #         sort_index = torch.topk(torch.from_numpy(actions_prob),prob_size)[1].numpy()
+        #         eraze = local_size-2 - indices.shape[1]
+        #         for i in range(prob_size):
+        #             if eraze == 0:
+        #                 break
+        #             if actions[0][sort_index[0][i]] == 0:
+        #                 actions[0][sort_index[0][i]] = 1.
+        #                 eraze -= 1
+        #         indices = np.array([np.where(actions == 1)[1]])
 
         # import pdb; pdb.set_trace()
         # print(indices.shape)

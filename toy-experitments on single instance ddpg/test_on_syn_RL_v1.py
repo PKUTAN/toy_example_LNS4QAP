@@ -235,7 +235,7 @@ if __name__ == '__main__':
     model.Params.TimeLimit = 5    
     model.Params.OutputFlag = 0
 
-    writer = SummaryWriter(log_dir = './log_ddpg_4_steps_lr_0.00001_bsize8_rmsize80_train5_hidden1_200_2_100_local8_0.1_1/')
+    writer = SummaryWriter(log_dir = './log_ddpg_2_steps_lr_0.00001_bsize8_rmsize80_train5_hidden1_200_2_100_local8_0.1_1/')
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
@@ -248,8 +248,8 @@ if __name__ == '__main__':
             Fs = Fs.to(device)
             Ds = Ds.to(device)
 
-            
-
+            global_step = 0
+            # import pdb; pdb.set_trace()
             for cycle in range(500):
 
                 ##train
@@ -272,8 +272,9 @@ if __name__ == '__main__':
 
                 count_0 = 0
                 total_reward  = 0
-                for t_rollout in tqdm(range(4)):
+                for t_rollout in tqdm(range(1)):
                     #reset when the episode starts
+                    # import pdb;pdb.set_trace()
                     if t_rollout == 0:
                         agent.reset(to_numpy(features))
                     
@@ -286,7 +287,10 @@ if __name__ == '__main__':
                         #     # actions = np.zeros_like(actions)
                         #     # actions[:,indices] = 1.
                         # else:
-                        actions_prob,indices = agent.select_action(features,local_size,20)
+                        if global_step <= 3:
+                            actions_prob,indices = agent.random_action(10)
+                        else:
+                            actions_prob,indices = agent.select_action(features,local_size,20)
 
                             
                     # import pdb; pdb.set_trace()
@@ -327,16 +331,17 @@ if __name__ == '__main__':
                     #update
                     cur_objs = next_objs
                     cur_sols = next_sols
-                 
+                    global_step += 1
                     # print('t_r:{},total:{}'.format(t_rollout,total_reward.item()))
-                for _ in range(5):
-                    agent.update_policy()
+                if global_step >1 :
+                    for _ in range(5):
+                        agent.update_policy()
                     # print('policy_loss:{},critic_loss:{}'.format(agent.actor_loss,agent.critic_loss))
-                print(actions_prob)
-                print('epoch:{},episode:{},t_rollout:{},name:{},reward:{},return:{}'.format(epoch,step,t_rollout,names,total_reward.item(),next_objs))
-                writer.add_scalar(tag = 'returns',scalar_value = total_reward.item(),global_step = epoch*500 + step)
-                writer.add_scalar(tag = 'policy_loss',scalar_value = agent.actor_loss.item(),global_step = epoch*500 + step)
-                writer.add_scalar(tag = 'critic_loss',scalar_value = agent.critic_loss.item(),global_step = epoch*500 + step)
+                    print(actions_prob)
+                    print('epoch:{},episode:{},t_rollout:{},name:{},reward:{},return:{}'.format(epoch,step,t_rollout,names,total_reward.item(),next_objs))
+                    writer.add_scalar(tag = 'returns',scalar_value = total_reward.item(),global_step = epoch*500 + step)
+                    writer.add_scalar(tag = 'policy_loss',scalar_value = agent.actor_loss.item(),global_step = epoch*500 + step)
+                    writer.add_scalar(tag = 'critic_loss',scalar_value = agent.critic_loss.item(),global_step = epoch*500 + step)
                 ##evaluate
                 # agent.is_training = False
                 # init_sols = []
